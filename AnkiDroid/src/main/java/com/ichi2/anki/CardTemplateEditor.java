@@ -31,6 +31,7 @@ import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
 import androidx.viewpager2.widget.ViewPager2;
 import android.text.Editable;
+import android.text.InputType;
 import android.text.TextWatcher;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -360,9 +361,10 @@ public class CardTemplateEditor extends AnkiActivity {
                 menu.findItem(R.id.action_add).setVisible(false);
             }
 
-            // It is invalid to delete if there is only one card template, remove the option from UI
+            // It is invalid to reposition or delete if there is only one card template, remove the option from UI
             if (mTemplateEditor.getTempModel().getTemplateCount() < 2) {
                 menu.findItem(R.id.action_delete).setVisible(false);
+                //menu.findItem(R.id.action_reposition).setVisible(false);
             }
 
             super.onCreateOptionsMenu(menu, inflater);
@@ -402,6 +404,21 @@ public class CardTemplateEditor extends AnkiActivity {
                         numAffectedCards = col.getModels().tmplUseCount(tempModel.getModel(), ordinal);
                     }
                     confirmDeleteCards(template, tempModel.getModel(), numAffectedCards);
+                    return true;
+                }
+                case R.id.action_reposition: {
+                    Timber.i("CardTemplateEditor:: Reposition template button pressed");
+                    Resources res = getResources();
+                    //TODO reposition and remove use the same code for checking for one template.
+                    int ordinal = mTemplateEditor.mViewPager.getCurrentItem();
+                    final JSONObject template = tempModel.getTemplate(ordinal);
+                    // Don't do anything if only one template
+                    if (tempModel.getTemplateCount() < 2) {
+                        mTemplateEditor.showSimpleMessageDialog(res.getString(R.string.card_template_editor_cant_reposition));
+                        return true;
+                    }
+                    promptForNewPosition(tempModel.getModel());
+
                     return true;
                 }
                 case R.id.action_preview: {
@@ -696,6 +713,66 @@ public class CardTemplateEditor extends AnkiActivity {
             mTemplateEditor.mViewPager.getAdapter().notifyDataSetChanged();
             mTemplateEditor.mViewPager.setCurrentItem(templates.length() - 1, mTemplateEditor.animationDisabled());
         }
+
+
+        private void promptForNewPosition(JSONObject model){
+            //get number of templates from the temporary model
+            int numTemplates = model.getJSONArray("tmpls").length();
+            //get int from user "Enter new card position (1...numTemplates):"
+            EditText mFieldNameInput = new EditText(getContext());
+                mFieldNameInput.setRawInputType(InputType.TYPE_CLASS_NUMBER);
+                new MaterialDialog.Builder(getContext())
+                        .title(String.format(getResources().getString(R.string.model_field_editor_reposition), 1, numTemplates))
+                        .positiveText(R.string.dialog_ok)
+                        .customView(mFieldNameInput, true)
+                        .onPositive((dialog, which) -> {
+                            String newPosition = mFieldNameInput.getText().toString();
+                            int pos;
+                            try {
+                                pos = Integer.parseInt(newPosition);
+                            } catch (NumberFormatException n) {
+                                UIUtils.showThemedToast(getContext(), getResources().getString(R.string.toast_out_of_range), true);
+                                return;
+                            }
+
+                            if (pos < 1 || pos > numTemplates) {
+                                UIUtils.showThemedToast(getContext(), getResources().getString(R.string.toast_out_of_range), true);
+                            }
+
+                        })
+                        .negativeText(R.string.dialog_cancel)
+                        .show();
+            //TODO call reposition template?
+        }
+
+        /**
+         * @param tmpl template to reposition
+         * @param model model to in which the template will reposition, updated in place by reference
+         */
+        private void repositionTemplate(JSONObject tmpl, JSONObject model) {
+            JSONArray oldTemplates = model.getJSONArray("tmpls");
+            JSONArray newTemplates = new JSONArray();
+            for (int i = 0; i < oldTemplates.length(); i++) {
+                JSONObject possibleMatch = oldTemplates.getJSONObject(i);
+                if (possibleMatch.getInt("ord") != tmpl.getInt("ord")) {
+                    newTemplates.put(possibleMatch);
+                } else {
+                    Timber.d("deleteTemplate() found match - removing template with ord %s", possibleMatch.getInt("ord"));
+                    mTemplateEditor.getTempModel().removeTemplate(possibleMatch.getInt("ord"));
+                }
+            }
+            model.put("tmpls", newTemplates);
+            Models._updateTemplOrds(model);
+            // Make sure the fragments reinitialize, otherwise the reused ordinal causes staleness
+            ((TemplatePagerAdapter)mTemplateEditor.mViewPager.getAdapter()).ordinalShift();
+            mTemplateEditor.mViewPager.getAdapter().notifyDataSetChanged();
+            mTemplateEditor.mViewPager.setCurrentItem(newTemplates.length() - 1, mTemplateEditor.animationDisabled());
+
+            if (getActivity() != null) {
+                ((CardTemplateEditor) getActivity()).dismissAllDialogFragments();
+            }
+        }
+
 
         /**
          * Flip the question and answer side of the template

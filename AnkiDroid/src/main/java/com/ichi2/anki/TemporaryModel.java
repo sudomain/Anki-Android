@@ -38,7 +38,7 @@ import com.ichi2.utils.JSONObject;
 
 public class TemporaryModel {
 
-    public enum ChangeType { ADD, DELETE }
+    public enum ChangeType { ADD, DELETE, REPOSITION }
     public static final String INTENT_MODEL_FILENAME = "editedModelFilename";
     private ArrayList<Object[]> mTemplateChanges = new ArrayList<>();
     private String mEditedModelFileName = null;
@@ -142,6 +142,12 @@ public class TemporaryModel {
     }
 
 
+    public void repositionTemplate(int ord) {
+        Timber.d("repositionTemplate() on ordinal %s", ord);
+        addTemplateChange(ChangeType.REPOSITION, ord);
+    }
+
+
     public void saveToDatabase(CollectionTask.TaskListener listener) {
         Timber.d("saveToDatabase() called");
         dumpChanges();
@@ -235,7 +241,7 @@ public class TemporaryModel {
         if (type == ChangeType.DELETE) {
             int ordinalAdjustment = 0;
             for (int i = templateChanges.size() - 1; i >= 0; i--) {
-                Object[] oldChange = templateChanges.get(i );
+                Object[] oldChange = templateChanges.get(i);
                 switch ((ChangeType)oldChange[1]) {
                     case DELETE: {
                         // Deleting an ordinal at or below us? Adjust our comparison basis...
