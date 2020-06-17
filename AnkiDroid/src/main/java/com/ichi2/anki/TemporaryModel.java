@@ -40,7 +40,7 @@ public class TemporaryModel {
 
     public enum ChangeType { ADD, DELETE, REPOSITION }
     public static final String INTENT_MODEL_FILENAME = "editedModelFilename";
-    private ArrayList<Object[]> mTemplateChanges = new ArrayList<>();
+    private ArrayList<TemplateChange> mTemplateChanges = new ArrayList<>();
     private String mEditedModelFileName = null;
     private final @NonNull JSONObject mEditedModel;
 
@@ -92,7 +92,7 @@ public class TemporaryModel {
     @SuppressWarnings("unchecked")
     private void loadTemplateChanges(Bundle bundle) {
         try {
-            mTemplateChanges = (ArrayList<Object[]>) bundle.getSerializable("mTemplateChanges");
+            mTemplateChanges = (ArrayList<TemplateChange>) bundle.getSerializable("mTemplateChanges");
         } catch (ClassCastException e) {
             Timber.e(e, "Unexpected cast failure");
         }
@@ -132,19 +132,22 @@ public class TemporaryModel {
 
     public void addNewTemplate(JSONObject newTemplate) {
         Timber.d("addNewTemplate()");
-        addTemplateChange(ChangeType.ADD, newTemplate.getInt("ord"));
+        int [] ords = {newTemplate.getInt("ord")};
+        addTemplateChange(ChangeType.ADD, ords);
     }
 
 
     public void removeTemplate(int ord) {
         Timber.d("removeTemplate() on ordinal %s", ord);
-        addTemplateChange(ChangeType.DELETE, ord);
+        int [] ords = {ord};
+        addTemplateChange(ChangeType.DELETE, ords);
     }
 
 
-    public void repositionTemplate(int ord) {
-        Timber.d("repositionTemplate() on ordinal %s", ord);
-        addTemplateChange(ChangeType.REPOSITION, ord);
+    public void repositionTemplate(int oldOrd, int newOrd) {
+        Timber.d("repositionTemplate() from old ordinal %s to new ordinal %s", oldOrd, newOrd);
+        int [] ords = {oldOrd, newOrd};
+        //addTemplateChange(ChangeType.REPOSITION, ords);
     }
 
 
@@ -231,30 +234,30 @@ public class TemporaryModel {
      * Template deletes shift card ordinals in the database. To operate without saving, we must keep track to apply in order.
      * In addition, we don't want to persist a template add just to delete it later, so we combine those if they happen
      */
-    public void addTemplateChange(ChangeType type, int ordinal) {
+    public void addTemplateChange(ChangeType type, int [] ordinal) {
         Timber.d("addTemplateChange() type %s for ordinal %s", type, ordinal);
-        ArrayList<Object[]> templateChanges = getTemplateChanges();
+        ArrayList<TemplateChange> templateChanges = getTemplateChanges();
 
-        Object[] change = new Object[] {ordinal, type};
+        TemplateChange change = new TemplateChange(type, ordinal);
 
         // If we are deleting something we added but have not saved, edit it out of the change list
         if (type == ChangeType.DELETE) {
             int ordinalAdjustment = 0;
             for (int i = templateChanges.size() - 1; i >= 0; i--) {
-                Object[] oldChange = templateChanges.get(i);
-                switch ((ChangeType)oldChange[1]) {
+                TemplateChange oldChange = templateChanges.get(i);
+                switch ((ChangeType)oldChange.getType()) {
                     case DELETE: {
                         // Deleting an ordinal at or below us? Adjust our comparison basis...
-                        if ((Integer)oldChange[0] - ordinalAdjustment <= ordinal) {
+                        if ((Integer)oldChange.getOrds()[0] - ordinalAdjustment <= ordinal[0]) {
                             ordinalAdjustment++;
                             continue;
                         }
                         break;
                     }
                     case ADD:
-                        if (ordinal == (Integer)oldChange[0] - ordinalAdjustment) {
+                        if (ordinal[0] == (Integer)oldChange.getOrds()[0] - ordinalAdjustment) {
                             // Deleting something we added this session? Edit it out via compaction
-                            compactTemplateChanges((Integer)oldChange[0]);
+                            compactTemplateChanges((Integer)oldChange.getOrds()[0]);
                             return;
                         }
                         break;
@@ -265,7 +268,7 @@ public class TemporaryModel {
             }
         }
 
-        Timber.d("addTemplateChange() added ord/type: %s/%s", change[0], change[1]);
+        Timber.d("addTemplateChange() added ord/type: %s/%s", change.getOrds(), change.getType());
         templateChanges.add(change);
         dumpChanges();
     }
@@ -278,7 +281,7 @@ public class TemporaryModel {
      */
     public static boolean isOrdinalPendingAdd(TemporaryModel model, int ord) {
         for (int i = 0; i < model.getTemplateChanges().size(); i++) {
-            Object[] change = model.getTemplateChanges().get(i);
+            TemplateChange change = model.getTemplateChanges().get(i);
             int adjustedOrdinal = getAdjustedAddOrdinalAtChangeIndex(model, i);
             if (adjustedOrdinal == ord) {
                 Timber.d("isOrdinalPendingAdd() found ord %s was pending add (would adjust to %s)", ord, adjustedOrdinal);
@@ -301,13 +304,13 @@ public class TemporaryModel {
             return -1;
         }
         int ordinalAdjustment = 0;
-        Object[] change = model.getTemplateChanges().get(changesIndex);
-        int ordinalToInspect = (Integer) change[0];
+        TemplateChange change = model.getTemplateChanges().get(changesIndex);
+        int ordinalToInspect = (Integer) change.getOrds()[0];
 
         for (int i = model.getTemplateChanges().size() - 1; i >= changesIndex; i--) {
-            Object[] oldChange = model.getTemplateChanges().get(i);
-            int currentOrdinal = (Integer) change[0];
-            switch ((ChangeType) oldChange[1]) {
+            TemplateChange oldChange = model.getTemplateChanges().get(i);
+            int currentOrdinal = (Integer) change.getOrds()[0];
+            switch ((ChangeType) oldChange.getType()) {
                 case DELETE: {
                     // Deleting an ordinal at or below us? Adjust our comparison basis...
                     if (currentOrdinal - ordinalAdjustment <= ordinalToInspect) {
@@ -352,23 +355,23 @@ public class TemporaryModel {
             int ordinalAdjustment = 0;
 
             // We need an initializer. Though proposed change is checked last, it's a reasonable default initializer.
-            Object[] currentChange = { ord, ChangeType.DELETE };
+            TemplateChange currentChange = new TemplateChange(ChangeType.DELETE, ord);
             if (i < mTemplateChanges.size()) {
                 // Until we exhaust the pending change list we will use them
                 currentChange = mTemplateChanges.get(i);
             }
 
             // If the current pending change isn't a delete, it is unimportant here
-            if (currentChange[1] != ChangeType.DELETE) {
+            if (currentChange.getType() != ChangeType.DELETE) {
                 continue;
             }
 
             // If it is a delete, scan previous deletes and shift as necessary for original ord
             for (int j = 0; j < i; j++) {
-                Object[] previousChange = mTemplateChanges.get(j);
+                TemplateChange previousChange = mTemplateChanges.get(j);
 
                 // Is previous change a delete? Lower ordinal than current change?
-                if ((previousChange[1] == ChangeType.DELETE) && ((int)previousChange[0] <= (int)currentChange[0])) {
+                if ((previousChange.getType() == ChangeType.DELETE) && ((int)previousChange.getOrds()[0] <= (int)currentChange.getOrds()[0])) {
                     // If so, that is the case where things shift. It means our ordinals moved and original ord is higher
                     ordinalAdjustment++;
                 }
@@ -376,7 +379,7 @@ public class TemporaryModel {
 
             // We know how many times ordinals smaller than the current were deleted so we have the total adjustment
             // Save this pending delete at it's original / db-relative position
-            deletedDbOrds.add((int)currentChange[0] + ordinalAdjustment);
+            deletedDbOrds.add((int)currentChange.getOrds()[0] + ordinalAdjustment);
         }
 
         int[] deletedDbOrdInts = new int[deletedDbOrds.size()];
@@ -391,17 +394,17 @@ public class TemporaryModel {
         if (!BuildConfig.DEBUG) {
             return;
         }
-        ArrayList<Object[]> adjustedChanges = getAdjustedTemplateChanges();
+        ArrayList<TemplateChange> adjustedChanges = getAdjustedTemplateChanges();
         for (int i = 0; i < mTemplateChanges.size(); i++) {
-            Object[] change = mTemplateChanges.get(i);
-            Object[] adjustedChange = adjustedChanges.get(i);
-            Timber.d("dumpChanges() Change %s is ord/type %s/%s", i, change[0], change[1]);
-            Timber.d("dumpChanges() During save change %s will be ord/type %s/%s", i, adjustedChange[0], adjustedChange[1]);
+            TemplateChange change = mTemplateChanges.get(i);
+            TemplateChange adjustedChange = adjustedChanges.get(i);
+            Timber.d("dumpChanges() Change %s is ord/type %s/%s", i, change.getOrds(), change.getType());
+            Timber.d("dumpChanges() During save change %s will be ord/type %s/%s", i, adjustedChange.getOrds(), adjustedChange.getType());
         }
     }
 
 
-    public @NonNull ArrayList<Object[]> getTemplateChanges() {
+    public @NonNull ArrayList<TemplateChange> getTemplateChanges() {
         if (mTemplateChanges == null) {
             mTemplateChanges = new ArrayList<>();
         }
@@ -415,21 +418,21 @@ public class TemporaryModel {
      *
      * @return ArrayList<Object[2]> of [ordinal][ChangeType] entries
      */
-    public @NonNull ArrayList<Object[]> getAdjustedTemplateChanges() {
-        ArrayList<Object[]> changes = getTemplateChanges();
-        ArrayList<Object[]> adjustedChanges = new ArrayList<>();
+    public @NonNull ArrayList<TemplateChange> getAdjustedTemplateChanges() {
+        ArrayList<TemplateChange> changes = getTemplateChanges();
+        ArrayList<TemplateChange> adjustedChanges = new ArrayList<>();
 
         // In order to save the changes into the database, the ordinals in the changelist must correspond to the
         // ordinals in the database (for deletes) or the correct index in the changes array (for adds)
         // It is not possible to know what those will be until the user requests a save, so they are stored in the
         // change list as-is until the save time comes, then the adjustment is made all at once
         for (int i = 0; i < changes.size(); i++) {
-            Object[] change = changes.get(i);
-            Object[] adjustedChange = {change[0], change[1]};
-            switch ((ChangeType)adjustedChange[1]) {
+            TemplateChange change = changes.get(i);
+            TemplateChange adjustedChange = new TemplateChange(change.getType(), change.getOrds());
+            switch ((ChangeType)adjustedChange.getType()) {
                 case ADD:
-                    adjustedChange[0] = TemporaryModel.getAdjustedAddOrdinalAtChangeIndex(this, i);
-                    Timber.d("getAdjustedTemplateChanges() change %s ordinal adjusted from %s to %s", i, change[0], adjustedChange[0]);
+                    adjustedChange.getOrds()[0] = TemporaryModel.getAdjustedAddOrdinalAtChangeIndex(this, i);
+                    Timber.d("getAdjustedTemplateChanges() change %s ordinal adjusted from %s to %s", i, change.getOrds(), adjustedChange.getOrds());
                     break;
                 case DELETE:
                 default:
@@ -451,9 +454,9 @@ public class TemporaryModel {
         boolean postChange = false;
         int ordinalAdjustment = 0;
         for (int i = 0; i < mTemplateChanges.size(); i++) {
-            Object[] change = mTemplateChanges.get(i);
-            int ordinal = (Integer)change[0];
-            ChangeType changeType = (ChangeType)change[1];
+            TemplateChange change = mTemplateChanges.get(i);
+            int ordinal = (Integer)change.getOrds()[0];
+            ChangeType changeType = (ChangeType)change.getType();
             Timber.d("compactTemplateChanges() examining change entry %s / %s", ordinal, changeType);
 
             // Only make adjustments after the ordinal we want to delete was added
@@ -477,8 +480,35 @@ public class TemporaryModel {
             // If following ordinals were higher, we move them as part of compaction
             if ((ordinal + ordinalAdjustment) > addedOrdinalToDelete) {
                 Timber.d("compactTemplateChanges() shifting later/higher ordinal down");
-                change[0] = --ordinal;
+                change.getOrds()[0] = --ordinal;
             }
+        }
+    }
+
+    /**
+     * A class for holding changes made to the card types of a model. type is the type of change that occurred and ordinals are an array of the affected templates (ADD, REMOVE, and RENAME will only use the first element while REPOSITION will use the first element for the old position and the second element for the new position)
+     */
+    public class TemplateChange {
+        ChangeType type;
+        int [] ordinals = new int[2];
+
+        private TemplateChange(ChangeType type, int [] ordinals){
+            this.type = type;
+            this.ordinals = ordinals;
+        }
+
+        private TemplateChange(ChangeType type, int ordinal){
+            this.type = type;
+            this.ordinals[0] = ordinal;
+        }
+
+        public ChangeType getType() {
+            return type;
+        }
+
+
+        public int [] getOrds() {
+            return ordinals;
         }
     }
 }

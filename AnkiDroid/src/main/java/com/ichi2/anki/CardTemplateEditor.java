@@ -364,7 +364,7 @@ public class CardTemplateEditor extends AnkiActivity {
             // It is invalid to reposition or delete if there is only one card template, remove the option from UI
             if (mTemplateEditor.getTempModel().getTemplateCount() < 2) {
                 menu.findItem(R.id.action_delete).setVisible(false);
-                //menu.findItem(R.id.action_reposition).setVisible(false);
+                menu.findItem(R.id.action_reposition).setVisible(false);
             }
 
             super.onCreateOptionsMenu(menu, inflater);
@@ -384,12 +384,9 @@ public class CardTemplateEditor extends AnkiActivity {
                     return true;
                 case R.id.action_delete: {
                     Timber.i("CardTemplateEditor:: Delete template button pressed");
-                    Resources res = getResources();
                     int ordinal = mTemplateEditor.mViewPager.getCurrentItem();
                     final JSONObject template = tempModel.getTemplate(ordinal);
-                    // Don't do anything if only one template
-                    if (tempModel.getTemplateCount() < 2) {
-                        mTemplateEditor.showSimpleMessageDialog(res.getString(R.string.card_template_editor_cant_delete));
+                    if (!atLeastTwoCardTypes()){
                         return true;
                     }
 
@@ -408,17 +405,13 @@ public class CardTemplateEditor extends AnkiActivity {
                 }
                 case R.id.action_reposition: {
                     Timber.i("CardTemplateEditor:: Reposition template button pressed");
-                    Resources res = getResources();
-                    //TODO reposition and remove use the same code for checking for one template.
                     int ordinal = mTemplateEditor.mViewPager.getCurrentItem();
                     final JSONObject template = tempModel.getTemplate(ordinal);
-                    // Don't do anything if only one template
-                    if (tempModel.getTemplateCount() < 2) {
-                        mTemplateEditor.showSimpleMessageDialog(res.getString(R.string.card_template_editor_cant_reposition));
+                    if (!atLeastTwoCardTypes()){
                         return true;
                     }
-                    promptForNewPosition(tempModel.getModel());
-
+                    //pass the tempModel instead of tempModel.getModel() because we need to get the number of templates for the prompt
+                    promptForNewTemplatePosition(tempModel, ordinal);
                     return true;
                 }
                 case R.id.action_preview: {
@@ -465,6 +458,16 @@ public class CardTemplateEditor extends AnkiActivity {
             }
         }
 
+
+        private boolean atLeastTwoCardTypes(){
+            Resources res = getResources();
+            TemporaryModel tempModel = mTemplateEditor.getTempModel();
+            if (tempModel.getTemplateCount() < 2) {
+                mTemplateEditor.showSimpleMessageDialog(res.getString(R.string.card_template_editor_at_least_two_card_types));
+                return false;
+            }
+            return true;
+        }
 
         private void launchCardBrowserAppearance(JSONObject currentTemplate) {
             Context context = AnkiDroidApp.getInstance().getBaseContext();
@@ -715,18 +718,18 @@ public class CardTemplateEditor extends AnkiActivity {
         }
 
 
-        private void promptForNewPosition(JSONObject model){
+        private void promptForNewTemplatePosition(TemporaryModel tempModel, int ordinal){
             //get number of templates from the temporary model
-            int numTemplates = model.getJSONArray("tmpls").length();
+            int numTemplates = tempModel.getTemplateCount();
             //get int from user "Enter new card position (1...numTemplates):"
-            EditText mFieldNameInput = new EditText(getContext());
-                mFieldNameInput.setRawInputType(InputType.TYPE_CLASS_NUMBER);
+            EditText mTemplatePositionInput = new EditText(getContext());
+                mTemplatePositionInput.setRawInputType(InputType.TYPE_CLASS_NUMBER);
                 new MaterialDialog.Builder(getContext())
-                        .title(String.format(getResources().getString(R.string.model_field_editor_reposition), 1, numTemplates))
+                        .title(String.format(getResources().getString(R.string.card_template_editor_reposition_prompt), 1, numTemplates))
                         .positiveText(R.string.dialog_ok)
-                        .customView(mFieldNameInput, true)
+                        .customView(mTemplatePositionInput, true)
                         .onPositive((dialog, which) -> {
-                            String newPosition = mFieldNameInput.getText().toString();
+                            String newPosition = mTemplatePositionInput.getText().toString();
                             int pos;
                             try {
                                 pos = Integer.parseInt(newPosition);
@@ -737,19 +740,20 @@ public class CardTemplateEditor extends AnkiActivity {
 
                             if (pos < 1 || pos > numTemplates) {
                                 UIUtils.showThemedToast(getContext(), getResources().getString(R.string.toast_out_of_range), true);
+                            } else {
+                                // Input is valid, now attempt to modify
+                                //repositionTemplate();
                             }
 
                         })
                         .negativeText(R.string.dialog_cancel)
                         .show();
-            //TODO call reposition template?
         }
 
-        /**
-         * @param tmpl template to reposition
-         * @param model model to in which the template will reposition, updated in place by reference
-         */
-        private void repositionTemplate(JSONObject tmpl, JSONObject model) {
+
+        private void repositionTemplate(JSONObject m, JSONObject template, int idx) {
+            //Models.moveTemplate(m, template, idx);
+            /*
             JSONArray oldTemplates = model.getJSONArray("tmpls");
             JSONArray newTemplates = new JSONArray();
             for (int i = 0; i < oldTemplates.length(); i++) {
@@ -771,6 +775,8 @@ public class CardTemplateEditor extends AnkiActivity {
             if (getActivity() != null) {
                 ((CardTemplateEditor) getActivity()).dismissAllDialogFragments();
             }
+
+             */
         }
 
 

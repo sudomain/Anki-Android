@@ -164,8 +164,8 @@
     <string name="card_template_editor_menu_delete">Delete</string>
     <string name="card_template_editor_menu_reposition">Reposition</string>
     <string name="card_template_editor_menu_card_browser_appearance">Card Browser Appearance</string>
-    <string name="card_template_editor_cant_reposition">At least one card type is required</string>
-    <string name="card_template_editor_cant_delete">At least one card type is required</string>
+    <string name="card_template_editor_at_least_two_card_types">This operation requires at least two card types</string>
+    <string name="card_template_editor_reposition_prompt">Enter new card position (%1$d...%2$d):</string>
     <plurals name="card_template_editor_confirm_delete">
         <item quantity="one">Delete the “%2$s” card type, and its %1$d card?</item>
         <item quantity="other">Delete the “%2$s” card type, and its %1$d cards?</item>
