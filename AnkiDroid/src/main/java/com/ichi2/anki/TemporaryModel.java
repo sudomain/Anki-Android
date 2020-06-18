@@ -34,11 +34,11 @@ import timber.log.Timber;
 import com.ichi2.async.CollectionTask;
 import com.ichi2.compat.CompatHelper;
 import com.ichi2.utils.JSONObject;
-
+import com.ichi2.anki.TemplateChange;
 
 public class TemporaryModel {
 
-    public enum ChangeType { ADD, DELETE, REPOSITION }
+    public enum ChangeType { ADD, DELETE, REPOSITION, RENAME }
     public static final String INTENT_MODEL_FILENAME = "editedModelFilename";
     private ArrayList<TemplateChange> mTemplateChanges = new ArrayList<>();
     private String mEditedModelFileName = null;
@@ -482,33 +482,6 @@ public class TemporaryModel {
                 Timber.d("compactTemplateChanges() shifting later/higher ordinal down");
                 change.getOrds()[0] = --ordinal;
             }
-        }
-    }
-
-    /**
-     * A class for holding changes made to the card types of a model. type is the type of change that occurred and ordinals are an array of the affected templates (ADD, REMOVE, and RENAME will only use the first element while REPOSITION will use the first element for the old position and the second element for the new position)
-     */
-    public class TemplateChange {
-        ChangeType type;
-        int [] ordinals = new int[2];
-
-        private TemplateChange(ChangeType type, int [] ordinals){
-            this.type = type;
-            this.ordinals = ordinals;
-        }
-
-        private TemplateChange(ChangeType type, int ordinal){
-            this.type = type;
-            this.ordinals[0] = ordinal;
-        }
-
-        public ChangeType getType() {
-            return type;
-        }
-
-
-        public int [] getOrds() {
-            return ordinals;
         }
     }
 }

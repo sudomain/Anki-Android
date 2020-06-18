@@ -30,6 +30,7 @@ import com.ichi2.anki.CardUtils;
 import com.ichi2.anki.CollectionHelper;
 import com.ichi2.anki.R;
 import com.ichi2.anki.TemporaryModel;
+import com.ichi2.anki.TemplateChange;
 import com.ichi2.anki.exception.ConfirmModSchemaException;
 import com.ichi2.anki.exception.ImportExportException;
 import com.ichi2.libanki.WrongId;
@@ -1424,7 +1425,7 @@ public class CollectionTask extends BaseAsyncTask<CollectionTask.TaskData, Colle
         Collection col = CollectionHelper.getInstance().getCol(mContext);
         Object [] args = params[0].getObjArray();
         JSONObject model = (JSONObject) args[0];
-        ArrayList<Object[]> templateChanges = (ArrayList<Object[]>)args[1];
+        ArrayList<TemplateChange> templateChanges = (ArrayList<TemplateChange>)args[1];
         JSONObject oldModel = col.getModels().get(model.getLong("id"));
 
         // TODO need to save all the cards that will go away, for undo
@@ -1435,29 +1436,29 @@ public class CollectionTask extends BaseAsyncTask<CollectionTask.TaskData, Colle
         col.getDb().getDatabase().beginTransaction();
 
         try {
-            for (Object[] change : templateChanges) {
+            for (TemplateChange change : templateChanges) {
                 JSONArray oldTemplates = oldModel.getJSONArray("tmpls");
-                switch ((TemporaryModel.ChangeType) change[1]) {
+                switch ((TemporaryModel.ChangeType) change.getType()) {
                     case ADD:
-                        Timber.d("doInBackgroundSaveModel() adding template %s", change[0]);
+                        Timber.d("doInBackgroundSaveModel() adding template %s", change.getOrds());
                         try {
-                            col.getModels().addTemplate(oldModel, newTemplates.getJSONObject((int) change[0]));
+                            col.getModels().addTemplate(oldModel, newTemplates.getJSONObject((int) change.getOrds()[0]));
                         } catch (Exception e) {
-                            Timber.e(e, "Unable to add template %s to model %s", change[0], model.getLong("id"));
+                            Timber.e(e, "Unable to add template %s to model %s", change.getOrds(), model.getLong("id"));
                             return new TaskData(e.getLocalizedMessage(), false);
                         }
                         break;
                     case DELETE:
-                        Timber.d("doInBackgroundSaveModel() deleting template currently at ordinal %s", change[0]);
+                        Timber.d("doInBackgroundSaveModel() deleting template currently at ordinal %s", change.getOrds());
                         try {
-                            col.getModels().remTemplate(oldModel, oldTemplates.getJSONObject((int) change[0]));
+                            col.getModels().remTemplate(oldModel, oldTemplates.getJSONObject((int) change.getOrds()[0]));
                         } catch (Exception e) {
-                            Timber.e(e, "Unable to delete template %s from model %s", change[0], model.getLong("id"));
+                            Timber.e(e, "Unable to delete template %s from model %s", change.getOrds(), model.getLong("id"));
                             return new TaskData(e.getLocalizedMessage(), false);
                         }
                         break;
                     default:
-                        Timber.w("Unknown change type? %s", change[1]);
+                        Timber.w("Unknown change type? %s", change.getType());
                         break;
                 }
             }
